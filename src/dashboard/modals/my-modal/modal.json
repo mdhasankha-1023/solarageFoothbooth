@@ -2,6 +2,6 @@
   "$schema": "https://dev.wix.com/wix-cli/schemas/dashboard-modal.json",
   "id": "83572d07-0e8a-42ec-b3e7-9868b0c539b3",
   "title": "Proposal Details",
-  "width": 900,
+  "width": 1200,
   "height": 800
 }
