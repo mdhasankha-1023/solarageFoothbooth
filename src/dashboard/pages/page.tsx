@@ -39,25 +39,26 @@ const Index: FC = () => {
     try {
       setLoading(true);
       const queryResult = await items.query("Proposals").find();
-      
+
       const formattedData = queryResult.items.map((item: any) => {
         const rawPrice = item.totalQuote || item.price || 0;
-        const formattedPrice = new Intl.NumberFormat('en-CA', {
-          style: 'currency', currency: 'CAD'
+        const formattedPrice = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'CAD'
         }).format(rawPrice);
 
         return {
           id: item._id,
-          title: item.title || "Untitled Proposal",
+          title: item.package || "Untitled Proposal",
           customer: item.customer || "Unknown Customer",
           price: formattedPrice,
           priceQuote: item.priceQuote || "N/A",
           proposalStatus: item.proposal || "N/A",
           invoiced: item.invoiced || "N/A",
-          previewUrl: item["link-proposals-title_fld"] || "#", 
+          previewUrl: item["link-proposals-title_fld"] || "#",
         };
       });
-      
+
       setProposals(formattedData);
       setFilteredData(formattedData);
     } catch (error) {
@@ -70,8 +71,8 @@ const Index: FC = () => {
   useEffect(() => { fetchData(); }, []);
 
   useEffect(() => {
-    const filtered = proposals.filter(p => 
-      p.customer.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const filtered = proposals.filter(p =>
+      p.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.title.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredData(filtered);
@@ -81,7 +82,7 @@ const Index: FC = () => {
   const renderStatus = (status: any) => {
     const s = String(status || "").toLowerCase().trim();
     let skin: any = "neutral";
-    
+
     // Green triggers
     const successTriggers = ["send", "sent", "created", "paid", "yes", "active", "success", "accepted"];
     // Orange triggers
@@ -119,15 +120,15 @@ const Index: FC = () => {
       title: "",
       align: "right" as const,
       render: (row: Proposal) => (
-        <Button 
-          size="tiny" 
-          priority="secondary" 
+        <Button
+          size="tiny"
+          priority="secondary"
           onClick={(e) => {
             e.stopPropagation();
             window.open(row.previewUrl, "_blank");
           }}
         >
-          View Doc
+          Preview Proposal
         </Button>
       ),
     },
@@ -136,64 +137,64 @@ const Index: FC = () => {
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
       <Page backgroundColor="#F6F7F9">
-        <Page.Header 
-          title="Proposals Dashboard" 
+        <Page.Header
+          title="Proposals Dashboard"
           subtitle="Manage client agreements and invoicing status."
           actionsBar={
             <Box gap="small">
-                <Button onClick={() => fetchData()} priority="secondary" size="small">Refresh</Button>
-                <Button priority="primary" size="small">Create New</Button>
+              <Button onClick={() => fetchData()} priority="secondary" size="small">Refresh</Button>
+              <Button priority="primary" size="small">Create New</Button>
             </Box>
           }
         />
         <Page.Content>
           <Box direction="vertical" gap="medium">
-            
+
             <Layout>
-                <Cell span={4}>
-                    <Card>
-                        <Box padding="24px" direction="vertical">
-                            <Text size="tiny" weight="bold" secondary uppercase>Total Proposals</Text>
-                            <Text size="large" weight="bold">{proposals.length}</Text>
-                        </Box>
-                    </Card>
-                </Cell>
-                <Cell span={4}>
-                    <Card>
-                        <Box padding="24px" direction="vertical">
-                            <Text size="tiny" weight="bold" secondary uppercase>Active Quotes</Text>
-                            <Text size="large" weight="bold" color="orange">
-                                {proposals.filter(p => p.priceQuote.toLowerCase() === 'pending').length}
-                            </Text>
-                        </Box>
-                    </Card>
-                </Cell>
-                <Cell span={4}>
-                    <Card>
-                        <Box padding="24px" direction="vertical">
-                            <Text size="tiny" weight="bold" secondary uppercase>Total Paid</Text>
-                            <Text size="large" weight="bold" color="green">
-                                {proposals.filter(p => p.invoiced.toLowerCase() === 'paid').length}
-                            </Text>
-                        </Box>
-                    </Card>
-                </Cell>
+              <Cell span={4}>
+                <Card>
+                  <Box padding="24px" direction="vertical">
+                    <Text size="tiny" weight="bold" secondary uppercase>Total Proposals</Text>
+                    <Text size="large" weight="bold">{proposals.length}</Text>
+                  </Box>
+                </Card>
+              </Cell>
+              <Cell span={4}>
+                <Card>
+                  <Box padding="24px" direction="vertical">
+                    <Text size="tiny" weight="bold" secondary uppercase>Active Quotes</Text>
+                    <Text size="large" weight="bold" color="orange">
+                      {proposals.filter(p => p.priceQuote.toLowerCase() === 'pending').length}
+                    </Text>
+                  </Box>
+                </Card>
+              </Cell>
+              <Cell span={4}>
+                <Card>
+                  <Box padding="24px" direction="vertical">
+                    <Text size="tiny" weight="bold" secondary uppercase>Total Paid</Text>
+                    <Text size="large" weight="bold" color="green">
+                      {proposals.filter(p => p.invoiced.toLowerCase() === 'paid').length}
+                    </Text>
+                  </Box>
+                </Card>
+              </Cell>
             </Layout>
 
             <Card>
               <Box padding="16px 24px" align="space-between" verticalAlign="middle">
                 <Box gap="small" verticalAlign="middle">
-                    <Text weight="bold">All Submissions</Text>
-                    <Badge size="small" skin="neutral">{filteredData.length}</Badge>
+                  <Text weight="bold">All Submissions</Text>
+                  <Badge size="small" skin="neutral">{filteredData.length}</Badge>
                 </Box>
                 <Box width="300px">
-                    <Search 
-                        size="small" 
-                        placeholder="Search client or title..." 
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        onClear={() => setSearchTerm("")}
-                    />
+                  <Search
+                    size="small"
+                    placeholder="Search client or title..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    onClear={() => setSearchTerm("")}
+                  />
                 </Box>
               </Box>
               <Divider />
@@ -214,9 +215,9 @@ const Index: FC = () => {
                 >
                   <Table.Content />
                   {filteredData.length === 0 && (
-                      <Box padding="40px" align="center">
-                          <Text secondary>No proposals match your search.</Text>
-                      </Box>
+                    <Box padding="40px" align="center">
+                      <Text secondary>No proposals match your search.</Text>
+                    </Box>
                   )}
                 </Table>
               )}
