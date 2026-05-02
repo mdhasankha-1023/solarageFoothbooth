@@ -1,0 +1,7 @@
+{
+  "$schema": "https://dev.wix.com/wix-cli/schemas/dashboard-modal.json",
+  "id": "6d7fb602-779a-4570-a2cf-02204c1c90bb",
+  "title": "Proposal Preview",
+  "width": 1200,
+  "height": 800
+}
