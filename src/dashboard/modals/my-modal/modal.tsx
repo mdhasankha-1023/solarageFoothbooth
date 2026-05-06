@@ -46,6 +46,104 @@ const tokens = {
 };
 
 // ─────────────────────────────────────────────────────────────
+//  Activity helpers
+// ─────────────────────────────────────────────────────────────
+type ActivityEntry = {
+  type:
+    | "invoice_sent"
+    | "signed"
+    | "shared"
+    | "shared_contact"
+    | "viewed"
+    | "reverted"
+    | "created";
+  label: string;
+  link?: string;
+  date: string; // display string e.g. "Jul 17, 2025"
+};
+
+const activityIcon = (type: ActivityEntry["type"]) => {
+  const base: React.CSSProperties = {
+    width: "32px",
+    height: "32px",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "14px",
+    flexShrink: 0,
+  };
+  const map: Record<ActivityEntry["type"], { bg: string; icon: string }> = {
+    invoice_sent: { bg: "#EFF6FF", icon: "🧾" },
+    signed: { bg: "#DCFCE7", icon: "✍️" },
+    shared: { bg: "#F0FDF4", icon: "📤" },
+    shared_contact: { bg: "#EFF6FF", icon: "👤" },
+    viewed: { bg: "#FEF9C3", icon: "👁️" },
+    reverted: { bg: "#FEF2F2", icon: "↩️" },
+    created: { bg: "#F1F5F9", icon: "📄" },
+  };
+  const cfg = map[type] || { bg: "#F1F5F9", icon: "•" };
+  return <div style={{ ...base, background: cfg.bg }}>{cfg.icon}</div>;
+};
+
+// Build activity list from proposal fields
+const buildActivityList = (proposal: any): ActivityEntry[] => {
+  const entries: ActivityEntry[] = [];
+
+  if (proposal.invoiced === "Sent" || proposal.invoiced === "Yes") {
+    entries.push({
+      type: "invoice_sent",
+      label: "Invoice for payment was sent.",
+      date: proposal.signDate || proposal.eventDate || "—",
+    });
+  }
+
+  if (proposal.customerSign) {
+    entries.push({
+      type: "signed",
+      label: "Proposal was signed & accepted.",
+      date: proposal.signDate || "—",
+    });
+  }
+
+  if (proposal.proposal === "Sent" || proposal.proposal === "Yes") {
+    entries.push({
+      type: "shared_contact",
+      label: "Proposal was shared with",
+      link: proposal.customer,
+      date: proposal.eventDate || "—",
+    });
+    entries.push({
+      type: "shared",
+      label: "Proposal was shared.",
+      date: proposal.eventDate || "—",
+    });
+  }
+
+  if (proposal.priceQuote === "Sent" || proposal.priceQuote === "Yes") {
+    entries.push({
+      type: "viewed",
+      label: "Proposal was viewed.",
+      date: proposal.eventDate || "—",
+    });
+  }
+
+  entries.push({
+    type: "created",
+    label: "Proposal was created.",
+    date: proposal._createdDate
+      ? new Date(proposal._createdDate).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : proposal.eventDate || "—",
+  });
+
+  return entries;
+};
+
+// ─────────────────────────────────────────────────────────────
 //  Shared primitive components (defined OUTSIDE Modal to
 //  preserve React identity across re-renders)
 // ─────────────────────────────────────────────────────────────
@@ -282,6 +380,10 @@ const Modal: FC = () => {
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsEditMode, setTermsEditMode] = useState(false);
 
+  // ── Activity state ─────────────────────────────────────────
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<"all" | string>("all");
+
   // ── Fetch ──────────────────────────────────────────────────
   useEffect(() => {
     const observer = dashboard.observeState(async (state: any) => {
@@ -442,7 +544,6 @@ const Modal: FC = () => {
     return isNaN(num)
       ? "CA$0.00"
       : new Intl.NumberFormat("en-US", {
-          // Use en-US to force the CA prefix
           style: "currency",
           currency: "CAD",
         }).format(num);
@@ -484,6 +585,24 @@ const Modal: FC = () => {
     ? proposal.addons.split(/[+\n,]+/).filter((t: string) => t.trim() !== "")
     : [];
 
+  // ── Activity data ─────────────────────────────────────────
+  const activityList = buildActivityList(proposal);
+  const filteredActivity =
+    activityFilter === "all"
+      ? activityList
+      : activityList.filter((a) => a.type === activityFilter);
+
+  const activityTypeLabels: Record<string, string> = {
+    invoice_sent: "Invoices",
+    signed: "Signatures",
+    shared: "Shares",
+    shared_contact: "Shares",
+    viewed: "Views",
+    reverted: "Reverts",
+    created: "Created",
+  };
+  const uniqueTypes = [...new Set(activityList.map((a) => a.type))];
+
   // ── Render ────────────────────────────────────────────────
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
@@ -502,6 +621,9 @@ const Modal: FC = () => {
         }
         .addon-row:hover { background: #F8FAFC !important; }
         .terms-clause:hover { box-shadow: 0 4px 16px rgba(15,23,42,0.08) !important; }
+        .activity-row:hover { background: #F8FAFC !important; }
+        .activity-filter-btn { transition: all 0.15s; }
+        .activity-filter-btn:hover { border-color: #2563EB !important; color: #2563EB !important; }
       `}</style>
 
       {/* ═══════════════════════════════════════════════════
@@ -873,6 +995,309 @@ const Modal: FC = () => {
       )}
 
       {/* ═══════════════════════════════════════════════════
+          ACTIVITY SLIDE-IN PANEL
+      ═══════════════════════════════════════════════════ */}
+      {activityOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "flex",
+            justifyContent: "flex-end",
+            animation: "fadeIn 0.2s ease",
+          }}
+        >
+          {/* Backdrop */}
+          <div
+            onClick={() => setActivityOpen(false)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(15,23,42,0.4)",
+              backdropFilter: "blur(3px)",
+            }}
+          />
+
+          {/* Panel */}
+          <div
+            style={{
+              position: "relative",
+              width: "480px",
+              maxWidth: "92vw",
+              height: "100%",
+              background: tokens.surface,
+              boxShadow: tokens.shadowLg,
+              display: "flex",
+              flexDirection: "column",
+              animation: "slideInRight 0.28s cubic-bezier(0.4,0,0.2,1)",
+            }}
+          >
+            {/* Panel Header */}
+            <div
+              style={{
+                background: tokens.surface,
+                borderBottom: `1px solid ${tokens.border}`,
+                padding: "24px 28px 0",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  marginBottom: "20px",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontFamily: F,
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: tokens.blue,
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Proposal Timeline
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: F,
+                      fontSize: "20px",
+                      fontWeight: 800,
+                      color: tokens.navy,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    Activity
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: F,
+                      fontSize: "12px",
+                      color: tokens.muted,
+                      marginTop: "2px",
+                    }}
+                  >
+                    {activityList.length} event
+                    {activityList.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActivityOpen(false)}
+                  style={{
+                    background: "none",
+                    border: `1px solid ${tokens.border}`,
+                    borderRadius: "8px",
+                    width: "36px",
+                    height: "36px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: tokens.muted,
+                    fontSize: "16px",
+                    flexShrink: 0,
+                    transition: "all 0.15s",
+                  }}
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Filter pills */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  overflowX: "auto",
+                  paddingBottom: "16px",
+                  scrollbarWidth: "none",
+                }}
+              >
+                {["all", ...uniqueTypes].map((type) => {
+                  const isActive = activityFilter === type;
+                  const label =
+                    type === "all"
+                      ? "All activities"
+                      : activityTypeLabels[type] || type;
+                  return (
+                    <button
+                      key={type}
+                      className="activity-filter-btn"
+                      onClick={() => setActivityFilter(type)}
+                      style={{
+                        fontFamily: F,
+                        fontSize: "12px",
+                        fontWeight: isActive ? 700 : 500,
+                        background: isActive ? tokens.blueLight : tokens.bg,
+                        color: isActive ? tokens.blue : tokens.slate,
+                        border: `1px solid ${isActive ? tokens.blue : tokens.border}`,
+                        borderRadius: "20px",
+                        padding: "5px 14px",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Panel Body — Timeline */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "8px 0",
+              }}
+            >
+              {filteredActivity.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "60px 20px",
+                    color: tokens.muted,
+                    fontFamily: F,
+                  }}
+                >
+                  <div style={{ fontSize: "36px", marginBottom: "12px" }}>
+                    📭
+                  </div>
+                  <div style={{ fontWeight: 600, fontSize: "14px" }}>
+                    No activity yet
+                  </div>
+                  <div style={{ fontSize: "13px", marginTop: "4px" }}>
+                    Activity will appear here as the proposal progresses.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: "8px 28px 24px" }}>
+                  {/* Group label */}
+                  <div
+                    style={{
+                      fontFamily: F,
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: tokens.muted,
+                      marginBottom: "16px",
+                      marginTop: "8px",
+                    }}
+                  >
+                    Older
+                  </div>
+
+                  {/* Timeline entries */}
+                  <div style={{ position: "relative" }}>
+                    {filteredActivity.map((entry, idx) => {
+                      const isLast = idx === filteredActivity.length - 1;
+                      return (
+                        <div
+                          key={idx}
+                          className="activity-row"
+                          style={{
+                            display: "flex",
+                            gap: "16px",
+                            alignItems: "flex-start",
+                            padding: "10px 12px",
+                            margin: "0 -12px",
+                            borderRadius: "10px",
+                            transition: "background 0.15s",
+                            animation: `fadeUp 0.2s ease ${idx * 0.04}s both`,
+                          }}
+                        >
+                          {/* Icon + connector line */}
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {activityIcon(entry.type)}
+                            {!isLast && (
+                              <div
+                                style={{
+                                  width: "1px",
+                                  flex: 1,
+                                  minHeight: "20px",
+                                  background: tokens.border,
+                                  margin: "4px 0",
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {/* Content */}
+                          <div
+                            style={{
+                              flex: 1,
+                              paddingTop: "6px",
+                              paddingBottom: isLast ? "0" : "8px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontFamily: F,
+                                fontSize: "13px",
+                                color: tokens.slate,
+                                fontWeight: 500,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {entry.label}{" "}
+                              {entry.link && (
+                                <span
+                                  style={{
+                                    color: tokens.blue,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {entry.link}
+                                </span>
+                              )}
+                              {entry.link && "."}
+                            </div>
+                          </div>
+
+                          {/* Date */}
+                          <div
+                            style={{
+                              fontFamily: F,
+                              fontSize: "12px",
+                              color: tokens.muted,
+                              fontWeight: 400,
+                              paddingTop: "7px",
+                              flexShrink: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {entry.date}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════
           MAIN MODAL
       ═══════════════════════════════════════════════════ */}
       <CustomModalLayout
@@ -1019,6 +1444,28 @@ const Modal: FC = () => {
                   style={btn.secondary()}
                 >
                   ⚖️ Terms
+                </button>
+                {/* ── Activity Button ── */}
+                <button
+                  onClick={() => setActivityOpen(true)}
+                  style={btn.secondary()}
+                >
+                  🕐 Activity
+                  {activityList.length > 0 && (
+                    <span
+                      style={{
+                        background: tokens.blue,
+                        color: "#fff",
+                        borderRadius: "10px",
+                        padding: "1px 7px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        marginLeft: "2px",
+                      }}
+                    >
+                      {activityList.length}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -1559,6 +2006,158 @@ const Modal: FC = () => {
                         }}
                       >
                         {proposal.customer || "—"}
+                      </div>
+                    </div>
+
+                    {/* Quick Activity Preview Card */}
+                    <div
+                      style={{
+                        background: tokens.surface,
+                        border: `1px solid ${tokens.border}`,
+                        borderRadius: "14px",
+                        padding: "24px",
+                        boxShadow: tokens.shadow,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: "16px",
+                        }}
+                      >
+                        <SectionTitle icon="🕐">Recent Activity</SectionTitle>
+                        <button
+                          onClick={() => setActivityOpen(true)}
+                          style={{
+                            fontFamily: F,
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: tokens.blue,
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: "0",
+                            marginBottom: "20px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          View all →
+                        </button>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0",
+                        }}
+                      >
+                        {activityList.slice(0, 3).map((entry, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: "flex",
+                              gap: "10px",
+                              alignItems: "flex-start",
+                              paddingBottom: idx < 2 ? "12px" : "0",
+                              marginBottom: idx < 2 ? "0" : "0",
+                              position: "relative",
+                            }}
+                          >
+                            {/* Mini icon */}
+                            <div
+                              style={{
+                                width: "26px",
+                                height: "26px",
+                                borderRadius: "6px",
+                                background: tokens.bg,
+                                border: `1px solid ${tokens.border}`,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "11px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {
+                                {
+                                  invoice_sent: "🧾",
+                                  signed: "✍️",
+                                  shared: "📤",
+                                  shared_contact: "👤",
+                                  viewed: "👁️",
+                                  reverted: "↩️",
+                                  created: "📄",
+                                }[entry.type]
+                              }
+                            </div>
+
+                            {/* connector */}
+                            {idx < Math.min(activityList.length, 3) - 1 && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  left: "12px",
+                                  top: "26px",
+                                  width: "1px",
+                                  height: "12px",
+                                  background: tokens.border,
+                                }}
+                              />
+                            )}
+
+                            <div style={{ flex: 1 }}>
+                              <div
+                                style={{
+                                  fontFamily: F,
+                                  fontSize: "12px",
+                                  color: tokens.slate,
+                                  fontWeight: 500,
+                                  lineHeight: 1.4,
+                                }}
+                              >
+                                {entry.label}
+                                {entry.link && (
+                                  <span
+                                    style={{
+                                      color: tokens.blue,
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {" "}
+                                    {entry.link}
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                style={{
+                                  fontFamily: F,
+                                  fontSize: "11px",
+                                  color: tokens.muted,
+                                  marginTop: "2px",
+                                }}
+                              >
+                                {entry.date}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {activityList.length === 0 && (
+                          <div
+                            style={{
+                              textAlign: "center",
+                              padding: "16px",
+                              color: tokens.muted,
+                              fontFamily: F,
+                              fontSize: "12px",
+                            }}
+                          >
+                            No activity yet
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

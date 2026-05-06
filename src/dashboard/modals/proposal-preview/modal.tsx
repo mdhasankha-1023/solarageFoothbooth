@@ -50,7 +50,7 @@ const Modal: FC = () => {
           >
             {proposalId ? (
               <iframe
-                src={`https://www.solargephotobooth.com/custom-proposal?rc=test-site&id=${proposalId}&preview=true`}
+                src={`https://www.solargephotobooth.com/custom-proposal?id=${proposalId}&preview=true`}
                 width="100%"
                 height="100%"
                 style={{ 
