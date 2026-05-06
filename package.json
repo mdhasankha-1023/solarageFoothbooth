@@ -22,9 +22,9 @@
   },
   "scripts": {
     "wix": "wix",
-    "build": "wix app build",
+    "build": "node api.js && wix app build",
     "release": "wix app release",
-    "dev": "wix app dev",
+    "dev": "node api.js && wix app dev",
     "preview": "wix app preview",
     "generate": "wix app generate",
     "logs": "wix app logs",
