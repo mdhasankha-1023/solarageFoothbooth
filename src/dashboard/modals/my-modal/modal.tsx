@@ -59,7 +59,59 @@ type ActivityEntry = {
     | "created";
   label: string;
   link?: string;
-  date: string; // display string e.g. "Jul 17, 2025"
+  date: string;
+};
+
+/**
+ * Maps a raw ProposalActivities CMS item to an ActivityEntry.
+ * Fields: proposalId, action, details, timeStamp
+ */
+const formatActivity = (item: any): ActivityEntry => {
+  const action: string = (item.action || "").toLowerCase().trim();
+
+  // Map CMS action string → ActivityEntry type
+  const typeMap: Record<string, ActivityEntry["type"]> = {
+    invoice_sent: "invoice_sent",
+    "invoice sent": "invoice_sent",
+    invoice: "invoice_sent",
+    signed: "signed",
+    sign: "signed",
+    accepted: "signed",
+    shared: "shared",
+    share: "shared",
+    shared_contact: "shared_contact",
+    "shared contact": "shared_contact",
+    contact: "shared_contact",
+    viewed: "viewed",
+    view: "viewed",
+    opened: "viewed",
+    reverted: "reverted",
+    revert: "reverted",
+    created: "created",
+    create: "created",
+  };
+
+  const resolvedType: ActivityEntry["type"] = typeMap[action] ?? "created";
+
+  // Format the timestamp
+  let dateDisplay = "—";
+  if (item.timeStamp) {
+    try {
+      dateDisplay = new Date(item.timeStamp).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      dateDisplay = String(item.timeStamp);
+    }
+  }
+
+  return {
+    type: resolvedType,
+    label: item.details || item.action || "Activity recorded.",
+    date: dateDisplay,
+  };
 };
 
 const activityIcon = (type: ActivityEntry["type"]) => {
@@ -84,63 +136,6 @@ const activityIcon = (type: ActivityEntry["type"]) => {
   };
   const cfg = map[type] || { bg: "#F1F5F9", icon: "•" };
   return <div style={{ ...base, background: cfg.bg }}>{cfg.icon}</div>;
-};
-
-// Build activity list from proposal fields
-const buildActivityList = (proposal: any): ActivityEntry[] => {
-  const entries: ActivityEntry[] = [];
-
-  if (proposal.invoiced === "Sent" || proposal.invoiced === "Yes") {
-    entries.push({
-      type: "invoice_sent",
-      label: "Invoice for payment was sent.",
-      date: proposal.signDate || proposal.eventDate || "—",
-    });
-  }
-
-  if (proposal.customerSign) {
-    entries.push({
-      type: "signed",
-      label: "Proposal was signed & accepted.",
-      date: proposal.signDate || "—",
-    });
-  }
-
-  if (proposal.proposal === "Sent" || proposal.proposal === "Yes") {
-    entries.push({
-      type: "shared_contact",
-      label: "Proposal was shared with",
-      link: proposal.customer,
-      date: proposal.eventDate || "—",
-    });
-    entries.push({
-      type: "shared",
-      label: "Proposal was shared.",
-      date: proposal.eventDate || "—",
-    });
-  }
-
-  if (proposal.priceQuote === "Sent" || proposal.priceQuote === "Yes") {
-    entries.push({
-      type: "viewed",
-      label: "Proposal was viewed.",
-      date: proposal.eventDate || "—",
-    });
-  }
-
-  entries.push({
-    type: "created",
-    label: "Proposal was created.",
-    date: proposal._createdDate
-      ? new Date(proposal._createdDate).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })
-      : proposal.eventDate || "—",
-  });
-
-  return entries;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -382,9 +377,11 @@ const Modal: FC = () => {
 
   // ── Activity state ─────────────────────────────────────────
   const [activityOpen, setActivityOpen] = useState(false);
+  // ✅ activityList is now proper state — populated from the CMS
+  const [activityList, setActivityList] = useState<ActivityEntry[]>([]);
   const [activityFilter, setActivityFilter] = useState<"all" | string>("all");
 
-  // ── Fetch ──────────────────────────────────────────────────
+  // ── Fetch proposal ─────────────────────────────────────────
   useEffect(() => {
     const observer = dashboard.observeState(async (state: any) => {
       const proposalId = state?.proposalId || state?.params?.proposalId;
@@ -392,15 +389,15 @@ const Modal: FC = () => {
         try {
           const data = await items.get("Proposals", proposalId);
           setProposal(data);
-          setEditedProposal({ ...data, total: data.totalQuote || data.total });
-          const initialAddons = data.addons
+          setEditedProposal({ ...data, total: data?.totalQuote || data?.total });
+          const initialAddons = data?.addons
             ? data.addons
                 .split(/[+\n,]+/)
                 .map((s: string) => s.trim())
                 .filter(Boolean)
             : [];
           setAddonsArray(initialAddons);
-          if (data.termsOfCondition) {
+          if (data?.termsOfCondition) {
             try {
               const parsed =
                 typeof data.termsOfCondition === "string"
@@ -421,6 +418,33 @@ const Modal: FC = () => {
         setLoading(false);
       }
     });
+    return () => observer.disconnect();
+  }, []);
+
+  // ── Fetch activity from ProposalActivities collection ──────
+  useEffect(() => {
+    const observer = dashboard.observeState(async (state: any) => {
+      const proposalId = state?.proposalId || state?.params?.proposalId;
+
+      if (proposalId) {
+        try {
+          const res = await items
+            .query("ProposalActivities")
+            .eq("proposalId", proposalId)
+            .descending("timeStamp") // newest first
+            .find();
+
+          console.log("activity data", res.items);
+
+          // ✅ Map CMS items → ActivityEntry using formatActivity
+          const formatted: ActivityEntry[] = res.items.map(formatActivity);
+          setActivityList(formatted);
+        } catch (err) {
+          console.error("Activity fetch error:", err);
+        }
+      }
+    });
+
     return () => observer.disconnect();
   }, []);
 
@@ -585,8 +609,8 @@ const Modal: FC = () => {
     ? proposal.addons.split(/[+\n,]+/).filter((t: string) => t.trim() !== "")
     : [];
 
-  // ── Activity data ─────────────────────────────────────────
-  const activityList = buildActivityList(proposal);
+  // ── Activity derived values ────────────────────────────────
+  // ✅ filteredActivity uses state-driven activityList (no more buildActivityList)
   const filteredActivity =
     activityFilter === "all"
       ? activityList
@@ -1195,7 +1219,7 @@ const Modal: FC = () => {
                       marginTop: "8px",
                     }}
                   >
-                    Older
+                    Recent
                   </div>
 
                   {/* Timeline entries */}
@@ -2062,7 +2086,6 @@ const Modal: FC = () => {
                               gap: "10px",
                               alignItems: "flex-start",
                               paddingBottom: idx < 2 ? "12px" : "0",
-                              marginBottom: idx < 2 ? "0" : "0",
                               position: "relative",
                             }}
                           >
